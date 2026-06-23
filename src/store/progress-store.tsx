@@ -95,8 +95,23 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
   // 2. When the signed-in user changes, reconcile local cache with the cloud.
   const userId = user?.id ?? null;
   useEffect(() => {
+    const prevUserId = userIdRef.current;
     userIdRef.current = userId;
-    if (!hydrated || !userId) return;
+    if (!hydrated) return;
+
+    // Signed out: wipe the cached progress so a different account signing in next
+    // can't inherit it via the merge below. (With the login gate there is no
+    // anonymous progress worth keeping.)
+    if (!userId) {
+      if (prevUserId) {
+        progressRef.current = INITIAL_PROGRESS;
+        setProgress(INITIAL_PROGRESS);
+        setLastResult(null);
+        saveLocalProgress(INITIAL_PROGRESS);
+      }
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       const remote = await fetchRemoteProgress(userId);

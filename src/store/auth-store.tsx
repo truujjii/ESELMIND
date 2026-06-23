@@ -43,6 +43,11 @@ type AuthContextValue = {
   /** True while an OAuth round-trip is in flight. */
   signingIn: boolean;
   signIn: (provider: OAuthProvider) => Promise<void>;
+  /** Email + password sign in. Throws on invalid credentials. */
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  /** Email + password sign up. `needsConfirmation` is true when Supabase is
+   *  configured to require an email confirmation click before issuing a session. */
+  signUpWithEmail: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
   signOut: () => Promise<void>;
 };
 
@@ -106,13 +111,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  }, []);
+
+  const signUpWithEmail = useCallback(
+    async (email: string, password: string): Promise<{ needsConfirmation: boolean }> => {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      // A session means we're signed in right away (email confirmation disabled);
+      // no session means Supabase emailed a confirmation link we must wait on.
+      return { needsConfirmation: !data.session };
+    },
+    [],
+  );
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ session, user: session?.user ?? null, initializing, signingIn, signIn, signOut }),
-    [session, initializing, signingIn, signIn, signOut],
+    () => ({
+      session,
+      user: session?.user ?? null,
+      initializing,
+      signingIn,
+      signIn,
+      signInWithEmail,
+      signUpWithEmail,
+      signOut,
+    }),
+    [session, initializing, signingIn, signIn, signInWithEmail, signUpWithEmail, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
