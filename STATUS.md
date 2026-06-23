@@ -54,9 +54,9 @@ Raw idea → Shippable MVP through 5 gates:
 ## Status & next steps
 - ✅ **Phase 1** — navigable foundation: data model, mock course, gamification logic, 6 screens, functional quiz.
 - ✅ **Phase 2** — satisfying loop: haptics (success/error), answer pop/shake, animated progress, confetti, entrance animations.
-- ⏭️ **Phase 3 — Mux video.** Replace the lesson placeholder with `expo-video` `<VideoView>` playing a Mux HLS stream. **Needs from user:** a Mux **Playback ID** (if they upload via dashboard) or a Mux **Access Token** (Token ID + Secret) to manage via API. `expo-video` is in Expo Go.
+- ✅ **Phase 3 — Mux video.** Lesson placeholder replaced by `expo-video` `<VideoView>` (`src/components/mux-video.tsx`) streaming a Mux HLS URL. `npm run sync-mux` (`scripts/sync-mux.mjs`) reads a Mux **Read** token from `.env.local` (gitignored), lists public assets, and writes `src/data/mux-library.generated.ts`; lessons resolve a playback id via `playbackIdForLesson()` (matched by Mux `passthrough` = lesson id) or a hardcoded `muxPlaybackId`. **Token never ships in the app** (not `EXPO_PUBLIC_*`). First lesson `l1` wired to a test asset.
 - ⏭️ **Phase 4 — gamification persistence.** Persist `UserProgress` to `AsyncStorage` (later Supabase). No creds needed; can start anytime.
-- ⏭️ **Phase 5 — Supabase.** Auth + Postgres schema + sync progress. **Needs from user:** Supabase project URL + anon key (go in app via `EXPO_PUBLIC_*`), plus DB access (project ref + DB password for CLI migrations, or run provided SQL). Secrets → `.env.local` (gitignored), never commit.
+- ⏭️ **Phase 5 — Supabase.** OAuth + Postgres schema + sync progress. **Needs from user:** Supabase project URL + anon key (go in app via `EXPO_PUBLIC_*`), plus DB access (project ref + DB password for CLI migrations, or run provided SQL). Secrets → `.env.local` (gitignored), never commit.
 - ⏭️ **Phase 6 — retention.** `expo-notifications` local notifications exploiting "unfinished state". (Remote push would need a dev build + backend.)
 
 ## Gotchas

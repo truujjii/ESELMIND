@@ -2,11 +2,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { MuxVideo } from '@/components/mux-video';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDuration } from '@/lib/format';
+import { playbackIdForLesson } from '@/lib/mux';
 import { useProgress } from '@/store/progress-store';
 import { findLesson } from '@/types/content';
 
@@ -28,19 +30,27 @@ export default function LessonScreen() {
   }
 
   const completed = isLessonCompleted(lesson.id);
+  // A real video lands once it's synced from Mux (matched by passthrough = lesson id);
+  // until then we show the colored placeholder so the screen still works.
+  const playbackId = lesson.muxPlaybackId ?? playbackIdForLesson(lesson.id);
 
   return (
     <ScrollView
       style={{ backgroundColor: theme.background }}
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.five }]}>
       <View style={styles.inner}>
-        {/* Video placeholder — replaced by an expo-video <VideoView> + Mux in Phase 3. */}
-        <View style={[styles.player, { backgroundColor: lesson.accent }]}>
-          <ThemedText style={styles.playGlyph}>▶</ThemedText>
-          <View style={styles.durationPill}>
-            <ThemedText style={styles.durationText}>{formatDuration(lesson.durationSec)}</ThemedText>
+        {playbackId ? (
+          <MuxVideo playbackId={playbackId} title={lesson.title} accent={lesson.accent} />
+        ) : (
+          <View style={[styles.player, { backgroundColor: lesson.accent }]}>
+            <ThemedText style={styles.playGlyph}>▶</ThemedText>
+            <View style={styles.durationPill}>
+              <ThemedText style={styles.durationText}>
+                {formatDuration(lesson.durationSec)}
+              </ThemedText>
+            </View>
           </View>
-        </View>
+        )}
 
         <View style={styles.body}>
           <ThemedText type="subtitle">{lesson.title}</ThemedText>
@@ -56,9 +66,12 @@ export default function LessonScreen() {
             </View>
           </Pressable>
 
-          <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-            🎬 El vídeo se conectará a Mux en la siguiente fase. Por ahora puedes ir directo al test.
-          </ThemedText>
+          {!playbackId && (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              🎬 El vídeo se conectará a Mux en cuanto sincronicemos tu biblioteca. Por ahora puedes
+              ir directo al test.
+            </ThemedText>
+          )}
         </View>
       </View>
     </ScrollView>

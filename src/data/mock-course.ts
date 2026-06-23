@@ -20,7 +20,7 @@ export const MOCK_COURSE: Course = {
           summary:
             'Qué significa operar, en qué se diferencia de invertir y cómo se gana (y se pierde) dinero.',
           durationSec: 240,
-          muxPlaybackId: null,
+          muxPlaybackId: 'tq02FcCMn5gGMqAQJhn3cxF01YIXaczd8V02GCaNYGmykw',
           accent: '#208AEF',
           xpReward: 50,
           questions: [
