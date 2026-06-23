@@ -1,12 +1,20 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AnswerOption } from '@/components/answer-option';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { haptics } from '@/lib/haptics';
 import { useProgress } from '@/store/progress-store';
 import { findLesson } from '@/types/content';
 
@@ -23,6 +31,16 @@ export default function QuizScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
 
+  // Hooks must run before any early return — derive these defensively.
+  const total = lesson ? lesson.questions.length : 0;
+  const answered = selected !== null;
+
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withTiming(total ? (index + (answered ? 1 : 0)) / total : 0, { duration: 300 });
+  }, [index, answered, total, progress]);
+  const progressStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+
   if (!lesson) {
     return (
       <ThemedView style={styles.center}>
@@ -32,23 +50,23 @@ export default function QuizScreen() {
   }
 
   const question = lesson.questions[index];
-  const total = lesson.questions.length;
-  const answered = selected !== null;
   const isLast = index === total - 1;
+  const gotItRight = selected === question.correctOptionId;
 
   function onSelect(optionId: string) {
     if (answered) return;
     setSelected(optionId);
     if (optionId === question.correctOptionId) {
       setCorrectCount((c) => c + 1);
+      haptics.success();
+    } else {
+      haptics.error();
     }
-    // Phase 2: haptics (success/error) + answer animation land here.
   }
 
   function onNext() {
     if (isLast) {
-      const finalCorrect = correctCount; // already includes the current answer
-      completeLesson(lesson!.id, finalCorrect, total);
+      completeLesson(lesson!.id, correctCount, total);
       router.replace('/results');
       return;
     }
@@ -58,7 +76,6 @@ export default function QuizScreen() {
 
   return (
     <ThemedView style={[styles.screen, { paddingTop: insets.top + Spacing.two }]}>
-      {/* Header: close + progress */}
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
@@ -67,14 +84,8 @@ export default function QuizScreen() {
           <ThemedText style={styles.close}>✕</ThemedText>
         </Pressable>
         <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
-          <View
-            style={[
-              styles.progressFill,
-              {
-                backgroundColor: theme.accent,
-                width: `${Math.round(((index + (answered ? 1 : 0)) / total) * 100)}%`,
-              },
-            ]}
+          <Animated.View
+            style={[styles.progressFill, { backgroundColor: theme.accent }, progressStyle]}
           />
         </View>
         <ThemedText type="smallBold" themeColor="textSecondary">
@@ -89,58 +100,33 @@ export default function QuizScreen() {
           </ThemedText>
 
           <View style={styles.options}>
-            {question.options.map((option) => {
-              const isCorrectOption = option.id === question.correctOptionId;
-              const isSelectedOption = option.id === selected;
-
-              let backgroundColor = theme.backgroundElement;
-              let borderColor = 'transparent';
-              if (answered) {
-                if (isCorrectOption) {
-                  backgroundColor = theme.success + '22';
-                  borderColor = theme.success;
-                } else if (isSelectedOption) {
-                  backgroundColor = theme.danger + '22';
-                  borderColor = theme.danger;
-                }
-              }
-
-              return (
-                <Pressable
-                  key={option.id}
-                  disabled={answered}
-                  onPress={() => onSelect(option.id)}
-                  style={({ pressed }) => (pressed && !answered ? styles.pressed : undefined)}>
-                  <View style={[styles.option, { backgroundColor, borderColor }]}>
-                    <ThemedText style={styles.optionText}>{option.text}</ThemedText>
-                    {answered && isCorrectOption && (
-                      <ThemedText style={[styles.mark, { color: theme.success }]}>✓</ThemedText>
-                    )}
-                    {answered && isSelectedOption && !isCorrectOption && (
-                      <ThemedText style={[styles.mark, { color: theme.danger }]}>✕</ThemedText>
-                    )}
-                  </View>
-                </Pressable>
-              );
-            })}
+            {question.options.map((option) => (
+              <AnswerOption
+                key={`${question.id}-${option.id}`}
+                text={option.text}
+                answered={answered}
+                isCorrect={option.id === question.correctOptionId}
+                isSelected={option.id === selected}
+                onPress={() => onSelect(option.id)}
+              />
+            ))}
           </View>
 
           {answered && (
-            <ThemedView
-              style={[
-                styles.explanation,
-                {
-                  backgroundColor:
-                    (selected === question.correctOptionId ? theme.success : theme.danger) + '18',
-                },
-              ]}>
-              <ThemedText type="smallBold">
-                {selected === question.correctOptionId ? '¡Correcto!' : 'No exactamente'}
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {question.explanation}
-              </ThemedText>
-            </ThemedView>
+            <Animated.View entering={FadeInDown.springify().damping(18)}>
+              <ThemedView
+                style={[
+                  styles.explanation,
+                  { backgroundColor: (gotItRight ? theme.success : theme.danger) + '18' },
+                ]}>
+                <ThemedText type="smallBold">
+                  {gotItRight ? '¡Correcto!' : 'No exactamente'}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {question.explanation}
+                </ThemedText>
+              </ThemedView>
+            </Animated.View>
           )}
         </View>
       </ScrollView>
@@ -210,23 +196,6 @@ const styles = StyleSheet.create({
   },
   options: {
     gap: Spacing.two,
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.four,
-    borderWidth: 2,
-  },
-  optionText: {
-    flex: 1,
-    fontSize: 16,
-  },
-  mark: {
-    fontSize: 18,
-    fontWeight: '700',
   },
   explanation: {
     padding: Spacing.three,
