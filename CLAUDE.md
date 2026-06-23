@@ -19,6 +19,7 @@ npm run web            # expo start --web
 npm run lint           # expo lint (eslint-config-expo)
 npx tsc --noEmit       # typecheck — must be 0 errors before committing
 npx expo-doctor        # dependency/config health — expect 18/18 before committing
+npm run sync-mux       # regenerate src/data/mux-library.generated.ts from your Mux account
 ```
 
 There is **no test runner** in this project (no Jest/Vitest); "verify before commit" means
@@ -47,6 +48,19 @@ Tunable constants live in `src/constants/` (`titles.ts` Baby Trader→Whale, `ba
 
 **Path aliases** (`tsconfig.json`): import app code as `@/*` → `src/*` and assets as
 `@/assets/*` → `assets/*`. Use these, not deep relative paths.
+
+**Video is Mux, and the API token never ships.** Lessons stream a Mux HLS URL via `expo-video`
+in `src/components/mux-video.tsx`; URL builders live in `src/lib/mux.ts`. The mapping from lesson
+to video runs through `src/data/mux-library.generated.ts` — **auto-generated, don't hand-edit.**
+`npm run sync-mux` (`scripts/sync-mux.mjs`) reads a Mux *Read* token from `.env.local` (gitignored,
+see `.env.example`), lists ready public-playback assets, and writes that file; `playbackIdForLesson()`
+matches a video to a lesson by Mux `passthrough` == lesson id (else the lesson shows a placeholder).
+The token is a build-time script secret only — **never put it in `EXPO_PUBLIC_*`** or it ships in
+the bundle. Only public playback ids reach the app.
+
+**Experiments are on** (`app.json`): `reactCompiler` (the React Compiler auto-memoizes — don't add
+manual `memo`/`useMemo` for perf unless profiling says so) and `typedRoutes` (route strings are
+type-checked, so navigate with the generated typed hrefs).
 
 **Platform-split files.** Web vs. native variants use Expo's extension resolution:
 `foo.tsx` (native) + `foo.web.tsx` (web), e.g. `src/hooks/use-color-scheme.ts` /
