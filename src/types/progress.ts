@@ -49,6 +49,8 @@ export type LessonResult = {
   lessonId: string;
   correct: number;
   total: number;
+  /** ≥50% correct. A fail doesn't complete the lesson — the next stays locked. */
+  passed: boolean;
   isPerfect: boolean;
   xpEarned: number;
   /** Set when this completion pushed the user into a new title. */

@@ -19,12 +19,20 @@ export default function ResultsScreen() {
   const { lastResult } = useProgress();
 
   useEffect(() => {
-    if (lastResult) haptics.success();
+    if (!lastResult) return;
+    if (lastResult.passed) haptics.success();
+    else haptics.error();
   }, [lastResult]);
 
   const goHome = () => {
     if (router.canDismiss()) router.dismissAll();
     else router.replace('/');
+  };
+
+  const retry = () => {
+    if (lastResult) {
+      router.replace({ pathname: '/quiz/[id]', params: { id: lastResult.lessonId } });
+    }
   };
 
   if (!lastResult) {
@@ -38,11 +46,9 @@ export default function ResultsScreen() {
     );
   }
 
-  const { correct, total, xpEarned, isPerfect, leveledUpTo, newBadges } = lastResult;
-  const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
-  const passed = pct >= 60;
-  const headline = isPerfect ? '¡Perfecto!' : passed ? '¡Bien hecho!' : '¡Sigue así!';
-  const emoji = isPerfect ? '🏆' : passed ? '🎉' : '💪';
+  const { correct, total, xpEarned, isPerfect, passed, leveledUpTo, newBadges } = lastResult;
+  const headline = !passed ? '¡Casi!' : isPerfect ? '¡Perfecto!' : '¡Bien hecho!';
+  const emoji = !passed ? '💪' : isPerfect ? '🏆' : '🎉';
 
   return (
     <ThemedView style={styles.screen}>
@@ -64,13 +70,26 @@ export default function ResultsScreen() {
             </ThemedText>
           </Animated.View>
 
-          <Animated.View entering={FadeInDown.delay(350).springify().damping(16)}>
-            <ThemedView style={[styles.xpPill, { backgroundColor: theme.accent + '22' }]}>
-              <ThemedText type="smallBold" themeColor="accent">
-                +{xpEarned} XP
-              </ThemedText>
-            </ThemedView>
-          </Animated.View>
+          {passed ? (
+            <Animated.View entering={FadeInDown.delay(350).springify().damping(16)}>
+              <ThemedView style={[styles.xpPill, { backgroundColor: theme.accent + '22' }]}>
+                <ThemedText type="smallBold" themeColor="accent">
+                  +{xpEarned} XP
+                </ThemedText>
+              </ThemedView>
+            </Animated.View>
+          ) : (
+            <Animated.View
+              entering={FadeInDown.delay(350).springify().damping(16)}
+              style={styles.fullWidth}>
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.encourage}>
+                  Necesitas acertar al menos la mitad para avanzar. Repasa la lección y vuelve a
+                  intentarlo — ¡ya casi lo tienes! 💪
+                </ThemedText>
+              </ThemedView>
+            </Animated.View>
+          )}
 
           {leveledUpTo && (
             <Animated.View
@@ -111,11 +130,34 @@ export default function ResultsScreen() {
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.three }]}>
-        <Pressable onPress={goHome} style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
-          <View style={[styles.cta, { backgroundColor: theme.accent }]}>
-            <ThemedText style={styles.ctaText}>Continuar</ThemedText>
+        {passed ? (
+          <Pressable
+            onPress={goHome}
+            style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
+            <View style={[styles.cta, { backgroundColor: theme.accent }]}>
+              <ThemedText style={styles.ctaText}>Continuar</ThemedText>
+            </View>
+          </Pressable>
+        ) : (
+          <View style={styles.footerStack}>
+            <Pressable
+              onPress={retry}
+              style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
+              <View style={[styles.cta, { backgroundColor: theme.accent }]}>
+                <ThemedText style={styles.ctaText}>Intentar de nuevo</ThemedText>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={goHome}
+              style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
+              <View style={styles.ctaGhost}>
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  Salir
+                </ThemedText>
+              </View>
+            </Pressable>
           </View>
-        </Pressable>
+        )}
       </View>
     </ThemedView>
   );
@@ -182,7 +224,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
   },
+  footerStack: {
+    gap: Spacing.two,
+  },
+  encourage: {
+    textAlign: 'center',
+  },
   cta: {
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.four,
+    alignItems: 'center',
+  },
+  ctaGhost: {
     paddingVertical: Spacing.three,
     borderRadius: Spacing.four,
     alignItems: 'center',

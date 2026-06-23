@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -19,6 +20,9 @@ export default function LessonScreen() {
   const insets = useSafeAreaInsets();
   const { course, isLessonCompleted } = useProgress();
 
+  // Unlocks the test once the lesson video has been watched to the end.
+  const [watched, setWatched] = useState(false);
+
   const lesson = findLesson(course, id);
 
   if (!lesson) {
@@ -33,6 +37,9 @@ export default function LessonScreen() {
   // A real video lands once it's synced from Mux (matched by passthrough = lesson id);
   // until then we show the colored placeholder so the screen still works.
   const playbackId = lesson.muxPlaybackId ?? playbackIdForLesson(lesson.id);
+  // Must watch the video before the test. Already-completed lessons stay open
+  // for review, and lessons still on the placeholder (no video) aren't gated.
+  const canTakeTest = completed || !playbackId || watched;
 
   return (
     <ScrollView
@@ -40,7 +47,12 @@ export default function LessonScreen() {
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.five }]}>
       <View style={styles.inner}>
         {playbackId ? (
-          <MuxVideo playbackId={playbackId} title={lesson.title} accent={lesson.accent} />
+          <MuxVideo
+            playbackId={playbackId}
+            title={lesson.title}
+            accent={lesson.accent}
+            onEnded={() => setWatched(true)}
+          />
         ) : (
           <View style={[styles.player, { backgroundColor: lesson.accent }]}>
             <ThemedText style={styles.playGlyph}>▶</ThemedText>
@@ -57,14 +69,25 @@ export default function LessonScreen() {
           <ThemedText themeColor="textSecondary">{lesson.summary}</ThemedText>
 
           <Pressable
+            disabled={!canTakeTest}
             onPress={() => router.push({ pathname: '/quiz/[id]', params: { id: lesson.id } })}
-            style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
-            <View style={[styles.cta, { backgroundColor: theme.accent }]}>
-              <ThemedText style={styles.ctaText}>
+            style={({ pressed }) => (pressed && canTakeTest ? styles.pressed : undefined)}>
+            <View
+              style={[
+                styles.cta,
+                { backgroundColor: canTakeTest ? theme.accent : theme.backgroundSelected },
+              ]}>
+              <ThemedText style={[styles.ctaText, !canTakeTest && { color: theme.textSecondary }]}>
                 {completed ? 'Repasar test' : 'Empezar test'}
               </ThemedText>
             </View>
           </Pressable>
+
+          {playbackId && !canTakeTest && (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+              🔒 Mira el vídeo completo para desbloquear el test.
+            </ThemedText>
+          )}
 
           {!playbackId && (
             <ThemedText type="small" themeColor="textSecondary" style={styles.note}>

@@ -21,6 +21,17 @@ export function xpForLesson(correct: number, total: number): number {
   );
 }
 
+/** Minimum share of correct answers to pass a quiz (≥50%, e.g. 2 of 3). */
+export const PASS_RATIO = 0.5;
+
+/**
+ * Whether a quiz score passes. Failing means the lesson isn't completed and the
+ * next one stays locked — the player retries. `2/3` and `2/4` pass; `1/3` fails.
+ */
+export function isPassingScore(correct: number, total: number): boolean {
+  return total > 0 && correct / total >= PASS_RATIO;
+}
+
 /** Highest title whose `minXp` the user has reached. */
 export function titleForXp(xp: number): Title {
   let current = TITLES[0];

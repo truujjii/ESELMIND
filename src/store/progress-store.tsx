@@ -12,6 +12,7 @@ import {
   advanceStreak,
   badgesByIds,
   evaluateEarnedBadges,
+  isPassingScore,
   titleForXp,
   xpForLesson,
 } from '@/lib/gamification';
@@ -51,48 +52,55 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
 
   const completeLesson = useCallback(
     (lessonId: string, correct: number, total: number): LessonResult => {
+      const passed = isPassingScore(correct, total);
       const isPerfect = total > 0 && correct === total;
-      const xpEarned = xpForLesson(correct, total);
+      const xpEarned = passed ? xpForLesson(correct, total) : 0;
 
       let result: LessonResult = {
         lessonId,
         correct,
         total,
+        passed,
         isPerfect,
         xpEarned,
         leveledUpTo: null,
         newBadges: [],
       };
 
-      setProgress((prev) => {
-        const titleBefore = titleForXp(prev.xp);
+      // Only a passing score completes the lesson and applies rewards. A fail
+      // leaves progress untouched, so the next lesson stays locked and the user
+      // retries — the results screen shows the "try again" state.
+      if (passed) {
+        setProgress((prev) => {
+          const titleBefore = titleForXp(prev.xp);
 
-        const completedLessonIds = prev.completedLessonIds.includes(lessonId)
-          ? prev.completedLessonIds
-          : [...prev.completedLessonIds, lessonId];
+          const completedLessonIds = prev.completedLessonIds.includes(lessonId)
+            ? prev.completedLessonIds
+            : [...prev.completedLessonIds, lessonId];
 
-        const streak = advanceStreak(prev);
+          const streak = advanceStreak(prev);
 
-        const draft: UserProgress = {
-          ...prev,
-          xp: prev.xp + xpEarned,
-          completedLessonIds,
-          perfectQuizCount: prev.perfectQuizCount + (isPerfect ? 1 : 0),
-          ...streak,
-        };
+          const draft: UserProgress = {
+            ...prev,
+            xp: prev.xp + xpEarned,
+            completedLessonIds,
+            perfectQuizCount: prev.perfectQuizCount + (isPerfect ? 1 : 0),
+            ...streak,
+          };
 
-        const earnedBadgeIds = evaluateEarnedBadges(draft, course);
-        const newBadgeIds = earnedBadgeIds.filter((id) => !prev.earnedBadgeIds.includes(id));
+          const earnedBadgeIds = evaluateEarnedBadges(draft, course);
+          const newBadgeIds = earnedBadgeIds.filter((id) => !prev.earnedBadgeIds.includes(id));
 
-        const titleAfter = titleForXp(draft.xp);
-        result = {
-          ...result,
-          leveledUpTo: titleAfter.id !== titleBefore.id ? titleAfter : null,
-          newBadges: badgesByIds(newBadgeIds),
-        };
+          const titleAfter = titleForXp(draft.xp);
+          result = {
+            ...result,
+            leveledUpTo: titleAfter.id !== titleBefore.id ? titleAfter : null,
+            newBadges: badgesByIds(newBadgeIds),
+          };
 
-        return { ...draft, earnedBadgeIds };
-      });
+          return { ...draft, earnedBadgeIds };
+        });
+      }
 
       setLastResult(result);
       return result;
