@@ -32,18 +32,6 @@ begin
 end;
 $$;
 
--- True when the current user is flagged admin. SECURITY DEFINER so the policy
--- can read profiles without recursing through profiles' own RLS.
-create or replace function public.is_admin()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select coalesce((select is_admin from public.profiles where id = auth.uid()), false);
-$$;
-
 -- Mux processing state for a lesson's video.
 do $$ begin
   create type public.mux_status as enum ('none', 'pending', 'preparing', 'ready', 'errored');
@@ -132,6 +120,19 @@ create table if not exists public.profiles (
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );
+
+-- True when the current user is flagged admin. SECURITY DEFINER so content RLS
+-- policies can read profiles without recursing through profiles' own RLS. Defined
+-- here (after profiles exists) because SQL functions validate their body on create.
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select is_admin from public.profiles where id = auth.uid()), false);
+$$;
 
 -- Mirrors the app's UserProgress type 1:1 — one row per user, upserted wholesale.
 create table if not exists public.user_progress (

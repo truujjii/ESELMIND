@@ -60,21 +60,18 @@ Raw idea → Shippable MVP through 5 gates:
 - ✅ **Phase 2** — satisfying loop: haptics (success/error), answer pop/shake, animated progress, confetti, entrance animations.
 - ✅ **Phase 3 — Mux video.** Lesson placeholder replaced by `expo-video` `<VideoView>` (`src/components/mux-video.tsx`) streaming a Mux HLS URL. `npm run sync-mux` (`scripts/sync-mux.mjs`) reads a Mux **Read** token from `.env.local` (gitignored), lists public assets, and writes `src/data/mux-library.generated.ts`; lessons resolve a playback id via `playbackIdForLesson()` (matched by Mux `passthrough` = lesson id) or a hardcoded `muxPlaybackId`. **Token never ships in the app** (not `EXPO_PUBLIC_*`). First lesson `l1` wired to a test asset.
 - ✅ **Phase 4 — gamification persistence.** `UserProgress` is offline-first: hydrated from + written through to AsyncStorage on every change (`src/lib/progress-sync.ts`), so progress survives reloads with no network.
-- 🚧 **Phase 5 — Supabase (code done; needs dashboard + DB setup).** Client, OAuth (`auth-store`), per-user progress sync, content schema (Mux-ready) + seed all wired. **Remaining (see "Supabase setup" below):** (1) apply the migration via `supabase db push` — needs the DB password/connection string; (2) enable the Google/Apple providers + redirect URLs in the Supabase dashboard before sign-in works. The app runs fine signed-out/offline until then.
+- 🚧 **Phase 5 — Supabase (schema live; OAuth config pending).** Client, OAuth (`auth-store`), per-user progress sync, content schema (Mux-ready) + seed all wired. **Migration applied** to the remote DB via `supabase db push` (IPv4 pooler, `eu-west-3`) — verified: seed loaded (1 course / 3 lessons / 9 questions / 36 options) and RLS confirmed (anon reads published content, can't see others' progress). **Remaining (user, dashboard only):** enable the Google/Apple providers + redirect URLs (see "Supabase setup" below) before sign-in works. The app runs fine signed-out/offline until then.
 - ⏭️ **Phase 5.1 — content from DB.** App still reads `mock-course.ts`. Once the admin panel exists, swap the content source to the Supabase tables (schema + seed already match the app's types).
 - ⏭️ **Phase 6 — retention.** `expo-notifications` local notifications exploiting "unfinished state". (Remote push would need a dev build + backend.)
 
 ## Supabase setup (one-time, by the user)
 Env (already in `.env.local`, gitignored): `EXPO_PUBLIC_SUPABASE_URL` + `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` ship in the app; `SUPABASE_SECRET_KEY` is **server/scripts only** — never `EXPO_PUBLIC_*`.
 
-1. **Apply the schema** (project ref `xopveuiwvwsmjqhybxyj`):
+1. **Apply the schema** — ✅ done (project ref `xopveuiwvwsmjqhybxyj`). The CLI is now a devDep, so future migrations are just: add a file to `supabase/migrations/`, then
    ```bash
-   brew install supabase/tap/supabase     # CLI not installed locally
-   supabase login                          # or export SUPABASE_ACCESS_TOKEN
-   supabase link --project-ref xopveuiwvwsmjqhybxyj
-   supabase db push                        # applies supabase/migrations/*
+   npx supabase db push --db-url "postgresql://postgres.xopveuiwvwsmjqhybxyj:<DB_PASSWORD>@aws-0-eu-west-3.pooler.supabase.com:6543/postgres"
    ```
-   (`db push` needs the DB password: Dashboard → Project Settings → Database.)
+   Use the **IPv4 pooler** URL (not the direct `db.<ref>...` host — that's IPv6-only and fails on IPv4 networks). Migrations run in a transaction (rollback on error) and are idempotent.
 2. **Enable OAuth providers** — Dashboard → Authentication → Providers → Google (and Apple): paste the provider client id/secret. Google client's authorized redirect URI = `https://xopveuiwvwsmjqhybxyj.supabase.co/auth/v1/callback`.
 3. **Allow app redirect URLs** — Dashboard → Authentication → URL Configuration → add `eselmind://**`, `exp://**` (Expo Go dev), and `http://localhost:8081` (web).
 
