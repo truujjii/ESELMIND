@@ -34,7 +34,7 @@ Raw idea → Shippable MVP through 5 gates:
 - History: Initial → Phase 1 (foundation) → Downgrade SDK 56→54 → Phase 2 (loop polish).
 
 ## Code map
-- `src/app/_layout.tsx` — root Stack + ThemeProvider (from `@react-navigation/native`) + `ProgressProvider`.
+- `src/app/_layout.tsx` — `SafeAreaProvider` + `AuthProvider` + `ProgressProvider` + ThemeProvider (from `@react-navigation/native`), then the **auth gate**: no session → `SignInScreen`, else the root Stack.
 - `src/app/(tabs)/_layout.tsx` — bottom `Tabs` (Aprender, Perfil) with Ionicons.
 - `src/app/(tabs)/index.tsx` — **Aprender**: learning path (sequential unlock), streak, XP/title bar.
 - `src/app/(tabs)/profile.tsx` — **Perfil**: title, streaks, badges, dev "reset progress".
@@ -47,7 +47,8 @@ Raw idea → Shippable MVP through 5 gates:
 - `src/lib/gamification.ts` — XP economy, title ladder, streak logic, badge evaluation.
 - `src/lib/format.ts` — duration formatting.
 - `src/store/progress-store.tsx` — `ProgressProvider`; `completeLesson()` centralizes all rewards. **Offline-first:** hydrates from AsyncStorage, writes through to cache + Supabase, merges local↔cloud on sign-in.
-- `src/store/auth-store.tsx` — `AuthProvider` / `useAuth()`. OAuth (Google/Apple) via the Expo web-browser flow (works in Expo Go); session persisted by supabase-js.
+- `src/store/auth-store.tsx` — `AuthProvider` / `useAuth()`. Email/password (`signInWithEmail` / `signUpWithEmail`, direct Supabase calls — no redirect) + Google/Apple OAuth (Expo web-browser flow). Session persisted by supabase-js.
+- `src/components/sign-in-screen.tsx` — login gate UI: email/password (primary) with Google/Apple buttons on top. Rendered by `_layout` whenever there's no session.
 - `src/lib/supabase.ts` — Supabase client (publishable key only; AsyncStorage session + AppState auto-refresh).
 - `src/lib/progress-sync.ts` — local cache (AsyncStorage) + remote read/write (`user_progress`) + conflict-free `mergeProgress`.
 - `supabase/migrations/*.sql` — `..._init.sql` (content + progress tables, Mux fields, RLS, triggers) and `..._seed_content.sql` (the mock course as DB rows). Apply with `supabase db push`.
@@ -60,7 +61,7 @@ Raw idea → Shippable MVP through 5 gates:
 - ✅ **Phase 2** — satisfying loop: haptics (success/error), answer pop/shake, animated progress, confetti, entrance animations.
 - ✅ **Phase 3 — Mux video.** Lesson placeholder replaced by `expo-video` `<VideoView>` (`src/components/mux-video.tsx`) streaming a Mux HLS URL. `npm run sync-mux` (`scripts/sync-mux.mjs`) reads a Mux **Read** token from `.env.local` (gitignored), lists public assets, and writes `src/data/mux-library.generated.ts`; lessons resolve a playback id via `playbackIdForLesson()` (matched by Mux `passthrough` = lesson id) or a hardcoded `muxPlaybackId`. **Token never ships in the app** (not `EXPO_PUBLIC_*`). First lesson `l1` wired to a test asset.
 - ✅ **Phase 4 — gamification persistence.** `UserProgress` is offline-first: hydrated from + written through to AsyncStorage on every change (`src/lib/progress-sync.ts`), so progress survives reloads with no network.
-- 🚧 **Phase 5 — Supabase (schema live; OAuth config pending).** Client, OAuth (`auth-store`), per-user progress sync, content schema (Mux-ready) + seed all wired. **Migration applied** to the remote DB via `supabase db push` (IPv4 pooler, `eu-west-3`) — verified: seed loaded (1 course / 3 lessons / 9 questions / 36 options) and RLS confirmed (anon reads published content, can't see others' progress). **Remaining (user, dashboard only):** enable the Google/Apple providers + redirect URLs (see "Supabase setup" below) before sign-in works. The app runs fine signed-out/offline until then.
+- 🚧 **Phase 5 — Supabase (schema live; email/password auth gate live; Google OAuth pending).** Client, auth (`auth-store`), per-user progress sync, content schema (Mux-ready) + seed all wired. **Migration applied** to the remote DB via `supabase db push` (IPv4 pooler, `eu-west-3`) — verified: seed loaded (1 course / 3 lessons / 9 questions / 36 options) and RLS confirmed (anon reads published content, can't see others' progress). **Auth is an email/password login gate** (`sign-in-screen.tsx` + gate in `_layout`) with Google/Apple buttons on top; the email path works in Expo Go (no redirect). Providers are enabled in Supabase. Cross-account progress leak fixed (cache cleared on sign-out). **Pending:** Google OAuth doesn't return to the app in Expo Go (`exp://` redirect / Site-URL issue); and for dev, disable "Confirm email" in Supabase (`mailer_autoconfirm` was false) so signup logs in instantly.
 - ⏭️ **Phase 5.1 — content from DB.** App still reads `mock-course.ts`. Once the admin panel exists, swap the content source to the Supabase tables (schema + seed already match the app's types).
 - ⏭️ **Phase 6 — retention.** `expo-notifications` local notifications exploiting "unfinished state". (Remote push would need a dev build + backend.)
 
