@@ -2,7 +2,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -16,6 +18,15 @@ import {
   titleForXp,
   xpForLesson,
 } from '@/lib/gamification';
+import {
+  fetchRemoteProgress,
+  loadLocalProgress,
+  logLessonCompletion,
+  mergeProgress,
+  pushRemoteProgress,
+  saveLocalProgress,
+} from '@/lib/progress-sync';
+import { useAuth } from '@/store/auth-store';
 import type { Course } from '@/types/content';
 import {
   INITIAL_PROGRESS,
@@ -25,16 +36,20 @@ import {
 } from '@/types/progress';
 
 /**
- * Central store for everything the player earns. Phase 1 keeps state in memory;
- * Phase 4 will hydrate/persist this to the device and Phase 5 will sync it to
- * Supabase. Components should read derived values (title, etc.) rather than
- * recompute them, so the gamification rules live in one place.
+ * Central store for everything the player earns. State is offline-first: it
+ * hydrates from AsyncStorage on launch and writes through on every change, so it
+ * survives reloads with no network. When signed in (see [[auth-store]]) it also
+ * syncs to Supabase — on sign-in local + cloud are merged ([[progress-sync]]) so
+ * anonymous progress is never lost. `completeLesson()` stays the single place
+ * rewards are applied, so the gamification rules live in one transaction.
  */
 type ProgressContextValue = {
   course: Course;
   progress: UserProgress;
   /** Current title, derived from XP. */
   title: Title;
+  /** False until the local cache has been read on startup. */
+  hydrated: boolean;
   /** Result of the most recently completed lesson — consumed by the results screen. */
   lastResult: LessonResult | null;
   /** Record a finished lesson + quiz. Returns the result summary. */
@@ -47,8 +62,55 @@ const ProgressContext = createContext<ProgressContextValue | null>(null);
 
 export function ProgressProvider({ children }: { children: ReactNode }) {
   const course = MOCK_COURSE;
+  const { user } = useAuth();
   const [progress, setProgress] = useState<UserProgress>(INITIAL_PROGRESS);
   const [lastResult, setLastResult] = useState<LessonResult | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Refs let completeLesson read the latest values without re-creating itself.
+  const progressRef = useRef(progress);
+  const userIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+
+  // Write through to the local cache + the cloud (when signed in).
+  const persist = useCallback((next: UserProgress) => {
+    saveLocalProgress(next);
+    const uid = userIdRef.current;
+    if (uid) pushRemoteProgress(uid, next).catch(() => {});
+  }, []);
+
+  // 1. Hydrate from the on-device cache once, before anything else.
+  useEffect(() => {
+    loadLocalProgress().then((local) => {
+      if (local) {
+        progressRef.current = local;
+        setProgress(local);
+      }
+      setHydrated(true);
+    });
+  }, []);
+
+  // 2. When the signed-in user changes, reconcile local cache with the cloud.
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    userIdRef.current = userId;
+    if (!hydrated || !userId) return;
+    let cancelled = false;
+    (async () => {
+      const remote = await fetchRemoteProgress(userId);
+      const merged = remote ? mergeProgress(progressRef.current, remote) : progressRef.current;
+      if (cancelled) return;
+      progressRef.current = merged;
+      setProgress(merged);
+      await saveLocalProgress(merged);
+      pushRemoteProgress(userId, merged).catch(() => {});
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, userId]);
 
   const completeLesson = useCallback(
     (lessonId: string, correct: number, total: number): LessonResult => {
@@ -71,41 +133,46 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
       // leaves progress untouched, so the next lesson stays locked and the user
       // retries — the results screen shows the "try again" state.
       if (passed) {
-        setProgress((prev) => {
-          const titleBefore = titleForXp(prev.xp);
+        const prev = progressRef.current;
+        const titleBefore = titleForXp(prev.xp);
 
-          const completedLessonIds = prev.completedLessonIds.includes(lessonId)
-            ? prev.completedLessonIds
-            : [...prev.completedLessonIds, lessonId];
+        const completedLessonIds = prev.completedLessonIds.includes(lessonId)
+          ? prev.completedLessonIds
+          : [...prev.completedLessonIds, lessonId];
 
-          const streak = advanceStreak(prev);
+        const streak = advanceStreak(prev);
 
-          const draft: UserProgress = {
-            ...prev,
-            xp: prev.xp + xpEarned,
-            completedLessonIds,
-            perfectQuizCount: prev.perfectQuizCount + (isPerfect ? 1 : 0),
-            ...streak,
-          };
+        const draft: UserProgress = {
+          ...prev,
+          xp: prev.xp + xpEarned,
+          completedLessonIds,
+          perfectQuizCount: prev.perfectQuizCount + (isPerfect ? 1 : 0),
+          ...streak,
+        };
 
-          const earnedBadgeIds = evaluateEarnedBadges(draft, course);
-          const newBadgeIds = earnedBadgeIds.filter((id) => !prev.earnedBadgeIds.includes(id));
+        const earnedBadgeIds = evaluateEarnedBadges(draft, course);
+        const newBadgeIds = earnedBadgeIds.filter((id) => !prev.earnedBadgeIds.includes(id));
 
-          const titleAfter = titleForXp(draft.xp);
-          result = {
-            ...result,
-            leveledUpTo: titleAfter.id !== titleBefore.id ? titleAfter : null,
-            newBadges: badgesByIds(newBadgeIds),
-          };
+        const titleAfter = titleForXp(draft.xp);
+        result = {
+          ...result,
+          leveledUpTo: titleAfter.id !== titleBefore.id ? titleAfter : null,
+          newBadges: badgesByIds(newBadgeIds),
+        };
 
-          return { ...draft, earnedBadgeIds };
-        });
+        const next: UserProgress = { ...draft, earnedBadgeIds };
+        progressRef.current = next;
+        setProgress(next);
+        persist(next);
+
+        const uid = userIdRef.current;
+        if (uid) logLessonCompletion(uid, result);
       }
 
       setLastResult(result);
       return result;
     },
-    [course],
+    [course, persist],
   );
 
   const isLessonCompleted = useCallback(
@@ -114,21 +181,24 @@ export function ProgressProvider({ children }: { children: ReactNode }) {
   );
 
   const resetProgress = useCallback(() => {
+    progressRef.current = INITIAL_PROGRESS;
     setProgress(INITIAL_PROGRESS);
     setLastResult(null);
-  }, []);
+    persist(INITIAL_PROGRESS);
+  }, [persist]);
 
   const value = useMemo<ProgressContextValue>(
     () => ({
       course,
       progress,
       title: titleForXp(progress.xp),
+      hydrated,
       lastResult,
       completeLesson,
       isLessonCompleted,
       resetProgress,
     }),
-    [course, progress, lastResult, completeLesson, isLessonCompleted, resetProgress],
+    [course, progress, hydrated, lastResult, completeLesson, isLessonCompleted, resetProgress],
   );
 
   return <ProgressContext.Provider value={value}>{children}</ProgressContext.Provider>;

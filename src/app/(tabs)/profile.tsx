@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -7,12 +7,14 @@ import { BADGES } from '@/constants/badges';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { titleProgress } from '@/lib/gamification';
+import { useAuth } from '@/store/auth-store';
 import { useProgress } from '@/store/progress-store';
 
 export default function ProfileScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { progress, title, resetProgress } = useProgress();
+  const { user, signIn, signOut, signingIn } = useAuth();
   const { ratio, next } = titleProgress(progress.xp);
 
   return (
@@ -48,6 +50,60 @@ export default function ProfileScreen() {
             <ThemedText type="small" themeColor="textSecondary">
               Próximo: {next.emoji} {next.name}
             </ThemedText>
+          )}
+        </ThemedView>
+
+        <ThemedView type="backgroundElement" style={styles.accountCard}>
+          {user ? (
+            <>
+              <ThemedText type="smallBold">Cuenta</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {user.email ?? 'Sesión iniciada'}
+              </ThemedText>
+              <Pressable
+                onPress={signOut}
+                style={({ pressed }) => [
+                  styles.authBtnOutline,
+                  { borderColor: theme.backgroundSelected },
+                  pressed && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold">Cerrar sesión</ThemedText>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <ThemedText type="smallBold">Guarda tu progreso</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Inicia sesión para sincronizarlo entre dispositivos. Tu avance actual se
+                conserva al entrar.
+              </ThemedText>
+              <Pressable
+                disabled={signingIn}
+                onPress={() => signIn('google')}
+                style={({ pressed }) => [
+                  styles.authBtn,
+                  { backgroundColor: theme.accent },
+                  (pressed || signingIn) && styles.pressed,
+                ]}>
+                {signingIn ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <ThemedText type="smallBold" style={styles.authBtnText}>
+                    Continuar con Google
+                  </ThemedText>
+                )}
+              </Pressable>
+              <Pressable
+                disabled={signingIn}
+                onPress={() => signIn('apple')}
+                style={({ pressed }) => [
+                  styles.authBtnOutline,
+                  { borderColor: theme.backgroundSelected },
+                  (pressed || signingIn) && styles.pressed,
+                ]}>
+                <ThemedText type="smallBold">Continuar con Apple</ThemedText>
+              </Pressable>
+            </>
           )}
         </ThemedView>
 
@@ -152,6 +208,29 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 36,
     lineHeight: 42,
+  },
+  accountCard: {
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+    gap: Spacing.two,
+  },
+  authBtn: {
+    height: 48,
+    borderRadius: Spacing.three,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.one,
+  },
+  authBtnText: {
+    color: '#ffffff',
+  },
+  authBtnOutline: {
+    height: 48,
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.one,
   },
   section: {
     gap: Spacing.two,
