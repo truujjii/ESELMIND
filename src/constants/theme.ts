@@ -71,3 +71,21 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+export const Typography = {
+  sans: {
+    regular: 'Inter_400Regular',
+    medium: 'Inter_500Medium',
+    semibold: 'Inter_600SemiBold',
+    bold: 'Inter_700Bold',
+  },
+  serif: {
+    semibold: 'Fraunces_600SemiBold',
+    semiboldItalic: 'Fraunces_600SemiBold_Italic',
+  },
+  mono: {
+    regular: 'JetBrainsMono_400Regular',
+    medium: 'JetBrainsMono_500Medium',
+    semibold: 'JetBrainsMono_600SemiBold',
+  },
+} as const;

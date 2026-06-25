@@ -1,5 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -12,11 +13,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnswerOption } from '@/components/answer-option';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { ScreenIn } from '@/components/motion';
+import { MaxContentWidth, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import { useProgress } from '@/store/progress-store';
 import { findLesson } from '@/types/content';
+
+const MINT = '#65E7C9';
 
 export default function QuizScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,15 +35,20 @@ export default function QuizScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
 
-  // Hooks must run before any early return — derive these defensively.
   const total = lesson ? lesson.questions.length : 0;
   const answered = selected !== null;
 
   const progress = useSharedValue(0);
   useEffect(() => {
-    progress.value = withTiming(total ? (index + (answered ? 1 : 0)) / total : 0, { duration: 300 });
+    progress.value = withTiming(
+      total ? (index + (answered ? 1 : 0)) / total : 0,
+      { duration: 450 },
+    );
   }, [index, answered, total, progress]);
-  const progressStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+
+  const progressStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%`,
+  }));
 
   if (!lesson) {
     return (
@@ -57,7 +66,7 @@ export default function QuizScreen() {
     if (answered) return;
     setSelected(optionId);
     if (optionId === question.correctOptionId) {
-      setCorrectCount((c) => c + 1);
+      setCorrectCount(c => c + 1);
       haptics.success();
     } else {
       haptics.error();
@@ -70,37 +79,45 @@ export default function QuizScreen() {
       router.replace('/results');
       return;
     }
-    setIndex((i) => i + 1);
+    setIndex(i => i + 1);
     setSelected(null);
   }
 
   return (
-    <ThemedView style={[styles.screen, { paddingTop: insets.top + Spacing.two }]}>
-      <View style={styles.header}>
+    <ScreenIn style={[styles.screen, { backgroundColor: theme.background }]}>
+      {/* ── Header: close + progress bar + counter ── */}
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.two }]}>
         <Pressable
           onPress={() => router.back()}
           hitSlop={12}
-          style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
-          <ThemedText style={styles.close}>✕</ThemedText>
+          style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}>
+          <ThemedText style={styles.closeGlyph}>✕</ThemedText>
         </Pressable>
-        <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
+        <View style={styles.progressTrack}>
           <Animated.View
-            style={[styles.progressFill, { backgroundColor: theme.accent }, progressStyle]}
-          />
+            style={[
+              styles.progressFill,
+              progressStyle,
+            ]}>
+            <LinearGradient
+              colors={['#65E7C9', '#3FCBAB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
         </View>
-        <ThemedText type="smallBold" themeColor="textSecondary">
-          {index + 1}/{total}
-        </ThemedText>
+        <ThemedText style={styles.counter}>{index + 1}/{total}</ThemedText>
       </View>
 
+      {/* ── Body ── */}
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.inner}>
-          <ThemedText type="subtitle" style={styles.prompt}>
-            {question.prompt}
-          </ThemedText>
+          <ThemedText style={styles.eyebrow}>PREGUNTA {index + 1}</ThemedText>
+          <ThemedText style={styles.prompt}>{question.prompt}</ThemedText>
 
           <View style={styles.options}>
-            {question.options.map((option) => (
+            {question.options.map(option => (
               <AnswerOption
                 key={`${question.id}-${option.id}`}
                 text={option.text}
@@ -114,109 +131,167 @@ export default function QuizScreen() {
 
           {answered && (
             <Animated.View entering={FadeInDown.springify().damping(18)}>
-              <ThemedView
+              <View
                 style={[
                   styles.explanation,
-                  { backgroundColor: (gotItRight ? theme.success : theme.danger) + '18' },
+                  {
+                    backgroundColor: gotItRight
+                      ? 'rgba(101,231,201,0.10)'
+                      : 'rgba(255,107,92,0.10)',
+                    borderColor: gotItRight
+                      ? 'rgba(101,231,201,0.32)'
+                      : 'rgba(255,107,92,0.30)',
+                  },
                 ]}>
-                <ThemedText type="smallBold">
-                  {gotItRight ? '¡Correcto!' : 'No exactamente'}
+                <ThemedText
+                  style={[
+                    styles.explTitle,
+                    { color: gotItRight ? MINT : '#FF8A7D' },
+                  ]}>
+                  {gotItRight ? 'Correcto' : 'Incorrecto'}
                 </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {question.explanation}
-                </ThemedText>
-              </ThemedView>
+                <ThemedText style={styles.explBody}>{question.explanation}</ThemedText>
+              </View>
             </Animated.View>
           )}
         </View>
       </ScrollView>
 
+      {/* ── Footer CTA ── */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.three }]}>
         <Pressable
           disabled={!answered}
           onPress={onNext}
-          style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
-          <View
-            style={[
-              styles.cta,
-              { backgroundColor: answered ? theme.accent : theme.backgroundSelected },
-            ]}>
-            <ThemedText style={[styles.ctaText, !answered && { color: theme.textSecondary }]}>
-              {isLast ? 'Ver resultados' : 'Siguiente'}
-            </ThemedText>
-          </View>
+          style={({ pressed }) => (pressed && answered ? styles.pressed : undefined)}>
+          {answered ? (
+            <LinearGradient
+              colors={['#7DF0D6', '#46D0B0']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cta}>
+              <ThemedText style={styles.ctaTextDark}>
+                {isLast ? 'Ver resultados' : 'Siguiente'}
+              </ThemedText>
+            </LinearGradient>
+          ) : (
+            <View style={[styles.cta, styles.ctaDisabled]}>
+              <ThemedText style={styles.ctaTextMuted}>
+                {isLast ? 'Ver resultados' : 'Siguiente'}
+              </ThemedText>
+            </View>
+          )}
         </Pressable>
       </View>
-    </ThemedView>
+    </ScreenIn>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  screen: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: 22,
     paddingBottom: Spacing.three,
   },
-  close: {
-    fontSize: 22,
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#141518',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
+  closeGlyph: { fontSize: 15, color: '#E4E8E5' },
   progressTrack: {
     flex: 1,
-    height: 8,
-    borderRadius: 4,
+    height: 7,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 5,
+    overflow: 'hidden',
   },
+  counter: {
+    fontFamily: Typography.mono.medium,
+    fontSize: 13,
+    color: '#8E948F',
+    flexShrink: 0,
+  },
+  // Body
   body: {
     flexDirection: 'row',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: 22,
   },
   inner: {
     width: '100%',
     maxWidth: MaxContentWidth,
     gap: Spacing.four,
   },
+  eyebrow: {
+    fontFamily: Typography.mono.regular,
+    fontSize: 12,
+    letterSpacing: 1.4,
+    color: '#65E7C9',
+  },
   prompt: {
+    fontFamily: Typography.sans.bold,
     fontSize: 24,
     lineHeight: 32,
+    letterSpacing: -0.24,
+    color: '#F4F6F4',
   },
-  options: {
-    gap: Spacing.two,
-  },
+  options: { gap: Spacing.two },
   explanation: {
     padding: Spacing.three,
-    borderRadius: Spacing.four,
+    borderRadius: 18,
+    borderWidth: 1,
     gap: Spacing.one,
   },
+  explTitle: {
+    fontFamily: Typography.sans.bold,
+    fontSize: 13,
+    letterSpacing: 0.3,
+  },
+  explBody: {
+    fontFamily: Typography.sans.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#C2C8C4',
+  },
+  // Footer
   footer: {
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: 22,
     paddingTop: Spacing.two,
   },
   cta: {
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.four,
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  ctaText: {
-    color: '#ffffff',
+  ctaDisabled: { backgroundColor: '#16181B' },
+  ctaTextDark: {
+    fontFamily: Typography.sans.bold,
     fontSize: 16,
-    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: '#06140F',
   },
-  pressed: {
-    opacity: 0.75,
+  ctaTextMuted: {
+    fontFamily: Typography.sans.bold,
+    fontSize: 16,
+    color: '#4E544F',
   },
+  pressed: { opacity: 0.75 },
 });

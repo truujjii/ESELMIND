@@ -1,16 +1,28 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  ZoomIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Confetti } from '@/components/confetti';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { PopBreathe, PulseRings, SheenButton, Sparks } from '@/components/motion';
+import { Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import { useProgress } from '@/store/progress-store';
+
+const MINT = '#65E7C9';
+const ON_MINT = '#06140F';
 
 export default function ResultsScreen() {
   const router = useRouter();
@@ -18,11 +30,22 @@ export default function ResultsScreen() {
   const insets = useSafeAreaInsets();
   const { lastResult } = useProgress();
 
+  const flashOpacity = useSharedValue(lastResult?.passed ? 1 : 0);
+
   useEffect(() => {
     if (!lastResult) return;
-    if (lastResult.passed) haptics.success();
-    else haptics.error();
-  }, [lastResult]);
+    if (lastResult.passed) {
+      haptics.success();
+      flashOpacity.value = withSequence(
+        withTiming(1, { duration: 0 }),
+        withTiming(0, { duration: 600, easing: Easing.out(Easing.cubic) }),
+      );
+    } else {
+      haptics.error();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
 
   const goHome = () => {
     if (router.canDismiss()) router.dismissAll();
@@ -37,72 +60,111 @@ export default function ResultsScreen() {
 
   if (!lastResult) {
     return (
-      <ThemedView style={[styles.screen, styles.center]}>
+      <View style={[styles.screen, styles.center, { backgroundColor: theme.background }]}>
         <ThemedText type="subtitle">Sin resultados</ThemedText>
-        <Pressable onPress={goHome}>
-          <ThemedText type="linkPrimary">Volver a aprender</ThemedText>
-        </Pressable>
-      </ThemedView>
+      </View>
     );
   }
 
   const { correct, total, xpEarned, isPerfect, passed, leveledUpTo, newBadges } = lastResult;
-  const headline = !passed ? '¡Casi!' : isPerfect ? '¡Perfecto!' : '¡Bien hecho!';
-  const emoji = !passed ? '💪' : isPerfect ? '🏆' : '🎉';
 
-  return (
-    <ThemedView style={styles.screen}>
-      {passed && <Confetti />}
-
-      <View style={[styles.content, { paddingTop: insets.top + Spacing.six }]}>
-        <View style={styles.inner}>
-          <Animated.View entering={ZoomIn.springify().damping(12)}>
-            <ThemedText style={styles.bigEmoji}>{emoji}</ThemedText>
-          </Animated.View>
-          <Animated.View entering={FadeIn.delay(150)}>
-            <ThemedText type="title" style={styles.headline}>
-              {headline}
-            </ThemedText>
-          </Animated.View>
-          <Animated.View entering={FadeIn.delay(250)}>
-            <ThemedText type="subtitle" themeColor="textSecondary">
-              {correct}/{total} correctas
-            </ThemedText>
-          </Animated.View>
-
-          {passed ? (
-            <Animated.View entering={FadeInDown.delay(350).springify().damping(16)}>
-              <ThemedView style={[styles.xpPill, { backgroundColor: theme.accent + '22' }]}>
-                <ThemedText type="smallBold" themeColor="accent">
-                  +{xpEarned} XP
-                </ThemedText>
-              </ThemedView>
+  // ── Failed ──────────────────────────────────────────────────────────────────
+  if (!passed) {
+    return (
+      <View style={[styles.screen, { backgroundColor: '#0C0D0F' }]}>
+        <View style={[styles.content, { paddingTop: insets.top + Spacing.six }]}>
+          <View style={styles.inner}>
+            <Animated.View entering={ZoomIn.springify().damping(12)}>
+              <ThemedText style={styles.bigEmoji}>💪</ThemedText>
             </Animated.View>
-          ) : (
+            <Animated.View entering={FadeIn.delay(150)}>
+              <ThemedText style={styles.failHeadline}>¡Casi!</ThemedText>
+            </Animated.View>
+            <Animated.View entering={FadeIn.delay(250)}>
+              <ThemedText style={styles.scoreText}>{correct} de {total} correctas</ThemedText>
+            </Animated.View>
             <Animated.View
               entering={FadeInDown.delay(350).springify().damping(16)}
               style={styles.fullWidth}>
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.encourage}>
-                  Necesitas acertar al menos la mitad para avanzar. Repasa la lección y vuelve a
-                  intentarlo — ¡ya casi lo tienes! 💪
+              <View style={styles.failCard}>
+                <ThemedText style={styles.failCardTitle}>
+                  Repasa y vuelve a intentarlo
                 </ThemedText>
-              </ThemedView>
+                <ThemedText style={styles.failCardBody}>
+                  Vuelve a ver el vídeo y prueba otra vez. Cada intento suma — no se rompe tu racha.
+                </ThemedText>
+              </View>
             </Animated.View>
-          )}
+          </View>
+        </View>
+
+        <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.three }]}>
+          <LinearGradient
+            colors={['#7DF0D6', '#46D0B0']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.ctaMint}>
+            <SheenButton onPress={retry} style={styles.ctaMintInner}>
+              <ThemedText style={styles.ctaMintText}>INTENTAR DE NUEVO</ThemedText>
+            </SheenButton>
+          </LinearGradient>
+          <SheenButton onPress={goHome} style={styles.ctaGhost}>
+            <ThemedText style={styles.ctaGhostText}>Salir</ThemedText>
+          </SheenButton>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Passed ──────────────────────────────────────────────────────────────────
+  const headline = isPerfect ? '¡Perfecto!' : '¡Bien hecho!';
+
+  return (
+    <LinearGradient
+      colors={['#7DF0D6', '#46D0B0', '#2FB89B']}
+      start={{ x: 0.15, y: 0 }}
+      end={{ x: 0.85, y: 1 }}
+      style={styles.screen}>
+
+      {/* Ambient layer: rings + rising sparks */}
+      <PulseRings />
+      <Sparks />
+
+      {/* Flash overlay */}
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.flashOverlay, flashStyle]}
+        pointerEvents="none"
+      />
+
+      <View style={[styles.content, { paddingTop: insets.top + Spacing.five }]}>
+        <View style={styles.inner}>
+          <Animated.View entering={FadeIn.delay(300).duration(350)}>
+            <ThemedText style={styles.xpLabel}>XP GANADO</ThemedText>
+          </Animated.View>
+
+          {/* Pop-in then breathing loop on the XP number */}
+          <PopBreathe>
+            <ThemedText style={styles.xpNumber}>+{xpEarned}</ThemedText>
+          </PopBreathe>
+
+          <Animated.View entering={FadeIn.delay(450).duration(350)}>
+            <ThemedText style={styles.passHeadline}>{headline}</ThemedText>
+          </Animated.View>
+
+          <Animated.View entering={FadeIn.delay(500).duration(350)}>
+            <ThemedText style={styles.passScore}>{correct} de {total} correctas</ThemedText>
+          </Animated.View>
 
           {leveledUpTo && (
             <Animated.View
-              entering={FadeInDown.delay(500).springify().damping(16)}
+              entering={FadeInDown.delay(600).springify().damping(16)}
               style={styles.fullWidth}>
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <ThemedText type="smallBold" themeColor="streak">
-                  ¡Nuevo título desbloqueado!
-                </ThemedText>
-                <ThemedText type="subtitle">
+              <View style={styles.passCard}>
+                <ThemedText style={styles.passCardLabel}>¡Nuevo título!</ThemedText>
+                <ThemedText style={styles.passCardValue}>
                   {leveledUpTo.emoji} {leveledUpTo.name}
                 </ThemedText>
-              </ThemedView>
+              </View>
             </Animated.View>
           )}
 
@@ -110,102 +172,89 @@ export default function ResultsScreen() {
             <Animated.View
               entering={FadeInDown.delay(650).springify().damping(16)}
               style={styles.fullWidth}>
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <ThemedText type="smallBold">Logros conseguidos</ThemedText>
-                {newBadges.map((badge) => (
+              <View style={styles.passCard}>
+                <ThemedText style={styles.passCardLabel}>Logro desbloqueado</ThemedText>
+                {newBadges.map(badge => (
                   <View key={badge.id} style={styles.badgeRow}>
                     <ThemedText style={styles.badgeEmoji}>{badge.emoji}</ThemedText>
                     <View style={styles.flex}>
-                      <ThemedText type="smallBold">{badge.name}</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {badge.description}
-                      </ThemedText>
+                      <ThemedText style={styles.badgeName}>{badge.name}</ThemedText>
+                      <ThemedText style={styles.badgeDesc}>{badge.description}</ThemedText>
                     </View>
                   </View>
                 ))}
-              </ThemedView>
+              </View>
             </Animated.View>
           )}
         </View>
       </View>
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing.three }]}>
-        {passed ? (
-          <Pressable
-            onPress={goHome}
-            style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
-            <View style={[styles.cta, { backgroundColor: theme.accent }]}>
-              <ThemedText style={styles.ctaText}>Continuar</ThemedText>
-            </View>
-          </Pressable>
-        ) : (
-          <View style={styles.footerStack}>
-            <Pressable
-              onPress={retry}
-              style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
-              <View style={[styles.cta, { backgroundColor: theme.accent }]}>
-                <ThemedText style={styles.ctaText}>Intentar de nuevo</ThemedText>
-              </View>
-            </Pressable>
-            <Pressable
-              onPress={goHome}
-              style={({ pressed }) => (pressed ? styles.pressed : undefined)}>
-              <View style={styles.ctaGhost}>
-                <ThemedText type="smallBold" themeColor="textSecondary">
-                  Salir
-                </ThemedText>
-              </View>
-            </Pressable>
-          </View>
-        )}
-      </View>
-    </ThemedView>
+      {/* CONTINUAR with looping sheen */}
+      <Animated.View
+        entering={FadeInDown.delay(560).springify().damping(16)}
+        style={[styles.footer, { paddingBottom: insets.bottom + Spacing.three }]}>
+        <SheenButton onPress={goHome} style={styles.ctaDark}>
+          <ThemedText style={styles.ctaDarkText}>CONTINUAR</ThemedText>
+        </SheenButton>
+      </Animated.View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  center: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.three,
-  },
+  screen: { flex: 1 },
+  center: { alignItems: 'center', justifyContent: 'center', gap: Spacing.three },
+  flashOverlay: { backgroundColor: '#ffffff', zIndex: 10 },
   content: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     paddingHorizontal: Spacing.four,
   },
-  inner: {
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    alignItems: 'center',
-    gap: Spacing.three,
-  },
-  fullWidth: {
-    alignSelf: 'stretch',
-  },
-  bigEmoji: {
-    fontSize: 80,
-    lineHeight: 96,
+  inner: { width: '100%', alignItems: 'center', gap: Spacing.three },
+  // Pass
+  xpLabel: {
+    fontFamily: Typography.mono.semibold,
+    fontSize: 12,
+    letterSpacing: 2,
+    color: 'rgba(6,20,15,0.55)',
     textAlign: 'center',
   },
-  headline: {
+  xpNumber: {
+    fontFamily: Typography.serif.semibold,
+    fontSize: 100,
+    lineHeight: 90,
+    letterSpacing: -4,
+    color: ON_MINT,
     textAlign: 'center',
   },
-  xpPill: {
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
+  passHeadline: {
+    fontFamily: Typography.serif.semiboldItalic,
+    fontSize: 34,
+    color: ON_MINT,
+    textAlign: 'center',
   },
-  card: {
+  passScore: {
+    fontFamily: Typography.sans.semibold,
+    fontSize: 15,
+    color: 'rgba(6,20,15,0.68)',
+    textAlign: 'center',
+  },
+  passCard: {
     alignSelf: 'stretch',
-    padding: Spacing.three,
-    borderRadius: Spacing.four,
+    backgroundColor: 'rgba(6,20,15,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(6,20,15,0.12)',
+    borderRadius: 20,
+    padding: 16,
     gap: Spacing.two,
     alignItems: 'center',
+  },
+  passCardLabel: { fontFamily: Typography.sans.bold, fontSize: 14, color: ON_MINT },
+  passCardValue: {
+    fontFamily: Typography.sans.medium,
+    fontSize: 13,
+    color: 'rgba(6,20,15,0.65)',
   },
   badgeRow: {
     flexDirection: 'row',
@@ -213,39 +262,93 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     alignSelf: 'stretch',
   },
-  badgeEmoji: {
-    fontSize: 28,
-    lineHeight: 34,
+  badgeEmoji: { fontSize: 24 },
+  flex: { flex: 1 },
+  badgeName: { fontFamily: Typography.sans.bold, fontSize: 14, color: ON_MINT },
+  badgeDesc: {
+    fontFamily: Typography.sans.regular,
+    fontSize: 13,
+    color: 'rgba(6,20,15,0.65)',
   },
-  flex: {
-    flex: 1,
+  // Fail
+  bigEmoji: { fontSize: 62, lineHeight: 72, textAlign: 'center' },
+  failHeadline: {
+    fontFamily: Typography.serif.semiboldItalic,
+    fontSize: 38,
+    color: '#F4F6F4',
+    textAlign: 'center',
   },
+  scoreText: {
+    fontFamily: Typography.sans.semibold,
+    fontSize: 15,
+    color: '#9AA09C',
+    textAlign: 'center',
+  },
+  failCard: {
+    backgroundColor: '#141619',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 20,
+    padding: 18,
+    gap: Spacing.two,
+  },
+  failCardTitle: {
+    fontFamily: Typography.sans.semibold,
+    fontSize: 14,
+    color: '#E4E8E5',
+  },
+  failCardBody: {
+    fontFamily: Typography.sans.regular,
+    fontSize: 13.5,
+    lineHeight: 20,
+    color: '#878D89',
+  },
+  // Shared footer
+  fullWidth: { alignSelf: 'stretch' },
   footer: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
-  },
-  footerStack: {
     gap: Spacing.two,
   },
-  encourage: {
-    textAlign: 'center',
-  },
-  cta: {
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.four,
+  ctaDark: {
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: ON_MINT,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaDarkText: {
+    fontFamily: Typography.sans.bold,
+    fontSize: 16,
+    letterSpacing: 0.5,
+    color: '#F4F6F4',
+  },
+  ctaMint: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  ctaMintInner: {
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaMintText: {
+    fontFamily: Typography.sans.bold,
+    fontSize: 16,
+    letterSpacing: 0.5,
+    color: ON_MINT,
   },
   ctaGhost: {
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.four,
+    height: 52,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  ctaText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  pressed: {
-    opacity: 0.8,
+  ctaGhostText: {
+    fontFamily: Typography.sans.semibold,
+    fontSize: 15,
+    color: '#A6ACA8',
   },
 });
